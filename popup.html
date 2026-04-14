@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Pipeline CRM</title>
+  <link rel="stylesheet" href="popup.css" />
+</head>
+<body>
+  <header id="pp-header">
+    <div id="pp-logo">
+      <span class="pp-logo-dot"></span>
+      Pipeline
+    </div>
+    <div id="pp-stats">
+      <span id="pp-total-count">0 deals</span>
+    </div>
+  </header>
+
+  <div id="pp-filter-row">
+    <button class="pp-filter active" data-filter="active">Active</button>
+    <button class="pp-filter" data-filter="won">Won</button>
+    <button class="pp-filter" data-filter="cold">Cold</button>
+    <button class="pp-filter" data-filter="all">All</button>
+    <div style="flex:1"></div>
+    <button id="pp-open-li" title="Open LinkedIn Messaging">Open LinkedIn ↗</button>
+  </div>
+
+  <div id="pp-overdue-banner" style="display:none">
+    <span id="pp-overdue-text"></span>
+  </div>
+
+  <div id="pp-empty" style="display:none">
+    <div class="pp-empty-icon">📋</div>
+    <div>No deals yet</div>
+    <div class="pp-empty-sub">Open a LinkedIn conversation and assign a stage to start tracking.</div>
+  </div>
+
+  <div id="pp-list"></div>
+
+  <footer id="pp-footer">
+    <span id="pp-footer-note">Data stored locally in your browser</span>
+  </footer>
+
+  <script src="popup.js"></script>
+</body>
+</html>
