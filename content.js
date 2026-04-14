@@ -374,26 +374,27 @@ function updateContactHeader(name, subtitle) {
 
 function loadAndPopulateSidebar(threadId) {
   loadThreadData(threadId, (data) => {
-    document.getElementById('plcrm-no-thread').style.display = 'none';
-    document.getElementById('plcrm-content').style.display   = 'flex';
+    const contentEl = document.getElementById('plcrm-content');
+    const noThreadEl = document.getElementById('plcrm-no-thread');
+    
+    noThreadEl.style.display = 'none';
+    contentEl.style.display   = 'flex';
 
     if (data) {
-      // Populate with saved data
       selectStage(data.stage || 'new');
       document.getElementById('plcrm-notes').value = data.notes || '';
       document.getElementById('plcrm-followup-date').value = data.followUpDate || '';
       updateFollowupHint(data.followUpDate || '');
       updateMeta(data.updatedAt);
+      
+      // NEW: Update LinkedIn UI background
+      updateLinkedInHeaderBackground(data.stage);
 
-      // If this thread has data, auto-open the sidebar
       setSidebarOpen(true);
     } else {
-      // Fresh thread — reset form
       selectStage('new');
-      document.getElementById('plcrm-notes').value = '';
-      document.getElementById('plcrm-followup-date').value = '';
-      document.getElementById('plcrm-followup-hint').textContent = '';
-      updateMeta(null);
+      updateLinkedInHeaderBackground('new');
+
     }
 
     document.getElementById('plcrm-saved-msg').textContent = '';
@@ -401,6 +402,20 @@ function loadAndPopulateSidebar(threadId) {
     document.getElementById('plcrm-save-btn').classList.remove('plcrm-saved');
     unsavedChanges = false;
   });
+}
+
+// Helper function to find and color the LinkedIn header
+function updateLinkedInHeaderBackground(stageId) {
+  const stage = stageMap[stageId];
+  // Selects the header area of the active conversation
+  const header = document.querySelector('.msg-entity-lockup') || 
+                 document.querySelector('.msg-thread__topcard');
+  
+  if (header && stage) {
+    header.style.backgroundColor = stage.bg;
+    header.style.padding = '8px';
+    header.style.borderRadius = '8px';
+  }
 }
 
 function saveCurrentThread() {
