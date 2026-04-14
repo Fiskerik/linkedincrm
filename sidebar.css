@@ -415,3 +415,15 @@
   border: 1px solid #E2E8F0;
   border-radius: 4px;
 }
+
+.plcrm-inbox-dot {
+  position: absolute;
+  bottom: 8px;
+  left: 44px;
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  background: var(--dot-color, #94A3B8);
+  border: 2px solid #fff;
+  z-index: 999;
+}
