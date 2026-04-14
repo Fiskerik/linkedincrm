@@ -62,16 +62,12 @@ function updateInboxDots() {
       const match = link.href.match(/\/messaging\/thread\/([^/?#]+)/);
       if (!match) return;
 
-      // IMPORTANT: use raw (non-decoded) thread ID — storage keys are
-      // also saved raw, so decoding here would cause a mismatch
       const threadId = match[1];
       const data     = threads[threadId];
 
-      // Climb up to the <li> list item — it won't have overflow:hidden
-      // like the avatar image wrapper does, so the dot won't get clipped
       const listItem = link.closest('li') || link.parentElement;
 
-      // Remove any existing dot on this item first (clean slate)
+      // Remove any existing dot on this item first
       listItem.querySelectorAll('.plcrm-inbox-dot').forEach(d => d.remove());
 
       if (!data || !data.stage || data.stage === 'new') return;
@@ -79,18 +75,15 @@ function updateInboxDots() {
       const stage = stageMap[data.stage];
       if (!stage) return;
 
-      // Create the dot and attach to the list item
       const dot = document.createElement('span');
       dot.className = 'plcrm-inbox-dot';
       dot.title     = `Pipeline: ${stage.label}`;
       dot.style.setProperty('--dot-color', stage.color);
 
-      // The li needs relative positioning for our absolute dot to anchor to
       if (getComputedStyle(listItem).position === 'static') {
         listItem.style.position = 'relative';
       }
 
-      // Overdue follow-up? Add a pulse ring
       const isOverdue = data.followUpDate && (() => {
         const d = new Date(data.followUpDate + 'T00:00:00');
         const today = new Date(); today.setHours(0,0,0,0);
@@ -103,16 +96,13 @@ function updateInboxDots() {
   });
 }
 
-// Call updateInboxDots after every save so dots refresh immediately
 function refreshInboxDotsAfterSave() {
   setTimeout(updateInboxDots, 100);
 }
 
-// Wait for the page to be ready then init
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', init);
 } else {
-  // Small delay to let LinkedIn's SPA fully render
   setTimeout(init, 800);
 }
 
@@ -124,11 +114,9 @@ function getThreadId() {
 }
 
 function getContactName() {
-  // Page title is the most reliable: "Name | LinkedIn"
   const titleMatch = document.title.match(/^(.+?)\s*[\|\-]\s*(LinkedIn|Messaging)/i);
   if (titleMatch) return titleMatch[1].trim();
 
-  // DOM fallbacks
   const selectors = [
     '.msg-entity-lockup__entity-title',
     '.msg-thread__link-to-profile',
@@ -233,9 +221,21 @@ function buildSidebarHTML() {
           <div class="plcrm-section-label">Notes</div>
           <textarea
             id="plcrm-notes"
-            placeholder="What did you discuss? Key objections, budget signals, next steps…"
+            placeholder="What did you discuss?..."
             rows="4"
           ></textarea>
+        </section>
+
+        <section class="plcrm-section">
+          <div class="plcrm-section-label">Attachments</div>
+          <input type="file" id="plcrm-file-input" style="display:none" />
+          <button id="plcrm-upload-btn" class="plcrm-action-link">📎 Attach File</button>
+          <div id="plcrm-file-list"></div>
+        </section>
+
+        <section class="plcrm-section">
+          <div class="plcrm-section-label">History</div>
+          <div id="plcrm-history-list"></div>
         </section>
 
         <section class="plcrm-section">
@@ -262,22 +262,19 @@ function buildSidebarHTML() {
 // ─── Sidebar Events ───────────────────────────────────────────────────────────
 
 function attachSidebarEvents() {
-  // Toggle open/close
   document.getElementById('plcrm-tab').addEventListener('click', toggleSidebar);
   document.getElementById('plcrm-close').addEventListener('click', () => setSidebarOpen(false));
 
-  // Stage selection
   document.getElementById('plcrm-stages').addEventListener('click', (e) => {
     const btn = e.target.closest('.plcrm-stage-btn');
     if (!btn) return;
     selectStage(btn.dataset.stage);
+    updateLinkedInHeaderBackground(btn.dataset.stage);
     markUnsaved();
   });
 
-  // Notes change
   document.getElementById('plcrm-notes').addEventListener('input', markUnsaved);
 
-  // Date change
   document.getElementById('plcrm-followup-date').addEventListener('change', (e) => {
     updateFollowupHint(e.target.value);
     markUnsaved();
@@ -289,8 +286,82 @@ function attachSidebarEvents() {
     markUnsaved();
   });
 
-  // Save
+  document.getElementById('plcrm-upload-btn').addEventListener('click', () => {
+    document.getElementById('plcrm-file-input').click();
+  });
+
+  document.getElementById('plcrm-file-input').addEventListener('change', handleFileUpload);
+
   document.getElementById('plcrm-save-btn').addEventListener('click', saveCurrentThread);
+}
+
+// ─── Feature Logic ────────────────────────────────────────────────────────────
+
+function updateLinkedInHeaderBackground(stageId) {
+  const stage = stageMap[stageId];
+  // Target the LinkedIn message header area
+  const header = document.querySelector('.msg-entity-lockup') || 
+                 document.querySelector('.msg-thread__topcard');
+  
+  if (header && stage) {
+    header.style.backgroundColor = stage.bg;
+    header.style.padding = '8px';
+    header.style.borderRadius = '8px';
+    header.style.transition = 'background-color 0.3s ease';
+  }
+}
+
+function renderHistory(history) {
+  const list = document.getElementById('plcrm-history-list');
+  if (!history || history.length === 0) {
+    list.innerHTML = '<div style="color:#94A3B8; font-size:11px;">No progress logged yet.</div>';
+    return;
+  }
+  list.innerHTML = history.slice().reverse().map(item => {
+    const date = new Date(item.timestamp).toLocaleDateString();
+    return `<div class="plcrm-history-item">
+      <strong>${date}</strong>: Stage changed from <em>${item.from}</em> to <em>${item.to}</em>
+    </div>`;
+  }).join('');
+}
+
+function handleFileUpload(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+
+  const reader = new FileReader();
+  reader.onload = function(event) {
+    const fileData = {
+      name: file.name,
+      content: event.target.result,
+      timestamp: Date.now()
+    };
+    
+    loadThreadData(currentThreadId, (data) => {
+      const updatedData = data || { history: [], attachments: [] };
+      if (!updatedData.attachments) updatedData.attachments = [];
+      updatedData.attachments.push(fileData);
+      
+      saveThreadData(currentThreadId, updatedData, () => {
+        renderAttachments(updatedData.attachments);
+        document.getElementById('plcrm-save-btn').textContent = 'File Saved ✓';
+      });
+    });
+  };
+  reader.readAsDataURL(file);
+}
+
+function renderAttachments(files) {
+  const list = document.getElementById('plcrm-file-list');
+  if (!files || files.length === 0) {
+    list.innerHTML = '';
+    return;
+  }
+  list.innerHTML = files.map(f => `
+    <div class="plcrm-file-item">
+      <a href="${f.content}" download="${f.name}" class="plcrm-action-link">📄 ${f.name}</a>
+    </div>
+  `).join('');
 }
 
 // ─── Sidebar State ────────────────────────────────────────────────────────────
@@ -348,7 +419,6 @@ function checkCurrentThread() {
     currentThreadId = threadId;
     unsavedChanges = false;
 
-    // Update contact info immediately
     setTimeout(() => {
       const name     = getContactName();
       const subtitle = getContactSubtitle();
@@ -374,11 +444,8 @@ function updateContactHeader(name, subtitle) {
 
 function loadAndPopulateSidebar(threadId) {
   loadThreadData(threadId, (data) => {
-    const contentEl = document.getElementById('plcrm-content');
-    const noThreadEl = document.getElementById('plcrm-no-thread');
-    
-    noThreadEl.style.display = 'none';
-    contentEl.style.display   = 'flex';
+    document.getElementById('plcrm-no-thread').style.display = 'none';
+    document.getElementById('plcrm-content').style.display   = 'flex';
 
     if (data) {
       selectStage(data.stage || 'new');
@@ -386,15 +453,20 @@ function loadAndPopulateSidebar(threadId) {
       document.getElementById('plcrm-followup-date').value = data.followUpDate || '';
       updateFollowupHint(data.followUpDate || '');
       updateMeta(data.updatedAt);
-      
-      // NEW: Update LinkedIn UI background
-      updateLinkedInHeaderBackground(data.stage);
+      renderHistory(data.history);
+      renderAttachments(data.attachments);
+      updateLinkedInHeaderBackground(data.stage || 'new');
 
       setSidebarOpen(true);
     } else {
       selectStage('new');
+      document.getElementById('plcrm-notes').value = '';
+      document.getElementById('plcrm-followup-date').value = '';
+      document.getElementById('plcrm-followup-hint').textContent = '';
+      updateMeta(null);
+      renderHistory([]);
+      renderAttachments([]);
       updateLinkedInHeaderBackground('new');
-
     }
 
     document.getElementById('plcrm-saved-msg').textContent = '';
@@ -404,47 +476,50 @@ function loadAndPopulateSidebar(threadId) {
   });
 }
 
-// Helper function to find and color the LinkedIn header
-function updateLinkedInHeaderBackground(stageId) {
-  const stage = stageMap[stageId];
-  // Selects the header area of the active conversation
-  const header = document.querySelector('.msg-entity-lockup') || 
-                 document.querySelector('.msg-thread__topcard');
-  
-  if (header && stage) {
-    header.style.backgroundColor = stage.bg;
-    header.style.padding = '8px';
-    header.style.borderRadius = '8px';
-  }
-}
-
 function saveCurrentThread() {
   if (!currentThreadId) return;
 
-  const activeStageBtn = document.querySelector('.plcrm-stage-btn.plcrm-stage-active');
-  const stage          = activeStageBtn ? activeStageBtn.dataset.stage : 'new';
-  const notes          = document.getElementById('plcrm-notes').value.trim();
-  const followUpDate   = document.getElementById('plcrm-followup-date').value;
-  const name           = document.getElementById('plcrm-contact-name').textContent;
-  const title          = document.getElementById('plcrm-contact-title').textContent;
+  loadThreadData(currentThreadId, (existingData) => {
+    const activeStageBtn = document.querySelector('.plcrm-stage-btn.plcrm-stage-active');
+    const newStage = activeStageBtn ? activeStageBtn.dataset.stage : 'new';
+    const notes = document.getElementById('plcrm-notes').value.trim();
+    const followUpDate = document.getElementById('plcrm-followup-date').value;
+    const name = document.getElementById('plcrm-contact-name').textContent;
+    const title = document.getElementById('plcrm-contact-title').textContent;
 
-  const data = { name, title, stage, notes, followUpDate };
-
-  saveThreadData(currentThreadId, data, () => {
-    unsavedChanges = false;
-    updateMeta(Date.now());
-
-    const saveBtn = document.getElementById('plcrm-save-btn');
-    saveBtn.textContent = 'Saved ✓';
-    saveBtn.classList.add('plcrm-saved');
-
-    // Refresh inbox dots immediately after save
-    refreshInboxDotsAfterSave();
-
-    // Schedule follow-up alarm if date is set
-    if (followUpDate) {
-      scheduleFollowUpAlarm(currentThreadId, name, followUpDate);
+    const history = existingData?.history || [];
+    if (existingData && existingData.stage !== newStage) {
+      history.push({
+        from: existingData.stage,
+        to: newStage,
+        timestamp: Date.now()
+      });
     }
+
+    const data = { 
+      ...existingData,
+      name, 
+      title, 
+      stage: newStage, 
+      notes, 
+      followUpDate,
+      history
+    };
+
+    saveThreadData(currentThreadId, data, () => {
+      unsavedChanges = false;
+      updateMeta(Date.now());
+      renderHistory(history);
+
+      const saveBtn = document.getElementById('plcrm-save-btn');
+      saveBtn.textContent = 'Saved ✓';
+      saveBtn.classList.add('plcrm-saved');
+      refreshInboxDotsAfterSave();
+
+      if (followUpDate) {
+        scheduleFollowUpAlarm(currentThreadId, name, followUpDate);
+      }
+    });
   });
 }
 
@@ -454,8 +529,6 @@ function updateMeta(timestamp) {
   const d = new Date(timestamp);
   meta.textContent = `Last saved ${d.toLocaleDateString()} ${d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
 }
-
-// ─── Follow-up Alarms ─────────────────────────────────────────────────────────
 
 function scheduleFollowUpAlarm(threadId, contactName, dateStr) {
   const alarmTime = new Date(dateStr + 'T09:00:00').getTime();
