@@ -385,3 +385,33 @@
   60%  { box-shadow: 0 0 0 5px transparent; }
   100% { box-shadow: 0 0 0 0 transparent; }
 }
+
+/* History Styles */
+.plcrm-history-item {
+  font-size: 11px;
+  color: #64748B;
+  padding: 4px 0;
+  border-bottom: 1px dashed #E2E8F0;
+}
+.plcrm-history-item strong { color: #1E293B; }
+
+/* File List Styles */
+.plcrm-action-link {
+  font-size: 12px;
+  color: #3B82F6;
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-decoration: none;
+  display: inline-block;
+  margin-top: 4px;
+}
+.plcrm-action-link:hover { text-decoration: underline; }
+
+.plcrm-file-item {
+  margin-top: 5px;
+  padding: 6px;
+  background: #fff;
+  border: 1px solid #E2E8F0;
+  border-radius: 4px;
+}
