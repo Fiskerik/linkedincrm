@@ -14,7 +14,7 @@ const STAGES = [
 let currentThreadId   = null;
 let lastUrl           = location.href;
 let unsavedChanges    = false;
-let inboxDotTimer     = null;
+let inboxUpdateTimer  = null;
 
 const stageMap = Object.fromEntries(STAGES.map(s => [s.id, s]));
 
@@ -27,18 +27,19 @@ function init() {
   checkCurrentThread();
   scheduleInboxUpdate();
 
+  // Watch for SPA navigation and list changes
   const observer = new MutationObserver(() => {
     if (location.href !== lastUrl) {
       lastUrl = location.href;
       checkCurrentThread();
     }
-    clearTimeout(inboxDotTimer);
-    inboxDotTimer = setTimeout(updateInboxUI, 300);
+    clearTimeout(inboxUpdateTimer);
+    inboxUpdateTimer = setTimeout(updateInboxUI, 300);
   });
   observer.observe(document.body, { childList: true, subtree: true });
 }
 
-// ─── Inbox UI (Dots & Name Highlights) ────────────────────────────────────────
+// ─── Inbox UI (Dots & Row Highlights) ────────────────────────────────────────
 
 function scheduleInboxUpdate() {
   setTimeout(updateInboxUI, 1200);
@@ -57,14 +58,21 @@ function updateInboxUI() {
       const data     = threads[threadId];
       const listItem = link.closest('li') || link.parentElement;
 
-      // Clean existing dots
+      // Reset existing styles and clean dots
       listItem.querySelectorAll('.plcrm-inbox-dot').forEach(d => d.remove());
+      
+      const titleRow = link.querySelector('.msg-conversation-card__row.msg-conversation-card__title-row');
+      if (titleRow) {
+        titleRow.style.backgroundColor = 'transparent';
+        titleRow.style.border = 'none';
+        titleRow.style.padding = '0';
+      }
 
       if (!data || !data.stage) return;
       const stage = stageMap[data.stage];
       if (!stage) return;
 
-      // 1. Add Stage Dot
+      // 1. Add Stage Dot (Overdue pulsing logic included)
       if (data.stage !== 'new') {
         const dot = document.createElement('span');
         dot.className = 'plcrm-inbox-dot';
@@ -79,13 +87,13 @@ function updateInboxUI() {
         listItem.appendChild(dot);
       }
 
-      // 2. Highlight Name Background
-      const nameEl = link.querySelector('.msg-conversation-listitem__participant-names');
-      if (nameEl) {
-        nameEl.style.backgroundColor = stage.bg;
-        nameEl.style.padding = '2px 6px';
-        nameEl.style.borderRadius = '4px';
-        nameEl.style.border = data.stage === 'new' ? 'none' : `1px solid ${stage.color}`;
+      // 2. Highlight the Full Title Row
+      if (titleRow && data.stage !== 'new') {
+        titleRow.style.backgroundColor = stage.bg;
+        titleRow.style.padding = '2px 8px';
+        titleRow.style.borderRadius = '4px';
+        titleRow.style.border = `1px solid ${stage.color}`;
+        titleRow.style.margin = '2px 0';
       }
     });
   });
@@ -101,8 +109,7 @@ function getThreadId() {
 function getContactName() {
   const titleMatch = document.title.match(/^(.+?)\s*[\|\-]\s*(LinkedIn|Messaging)/i);
   if (titleMatch) return titleMatch[1].trim();
-
-  const selectors = ['.msg-entity-lockup__entity-title', '.msg-thread__link-to-profile', 'h2.t-16', '[data-anonymize="person-name"]'];
+  const selectors = ['.msg-entity-lockup__entity-title', '.msg-thread__link-to-profile', 'h2.t-16'];
   for (const sel of selectors) {
     const el = document.querySelector(sel);
     if (el?.textContent?.trim()) return el.textContent.trim();
@@ -111,11 +118,10 @@ function getContactName() {
 }
 
 function getContactSubtitle() {
-  const selectors = ['.msg-entity-lockup__subtitle span', '.msg-entity-lockup__subtitle', '.t-12.t-black--light.t-normal'];
+  const selectors = ['.msg-entity-lockup__subtitle span', '.msg-entity-lockup__subtitle'];
   for (const sel of selectors) {
     const el = document.querySelector(sel);
-    const text = el?.textContent?.trim();
-    if (text && text.length > 2) return text;
+    if (el?.textContent?.trim()) return el.textContent.trim();
   }
   return '';
 }
@@ -132,7 +138,7 @@ function updateLinkedInHeaderBackground(stageId) {
   }
 }
 
-// ─── Sidebar Injection & UI ───────────────────────────────────────────────────
+// ─── Sidebar Logic ───────────────────────────────────────────────────────────
 
 function injectSidebar() {
   const sidebar = document.createElement('div');
@@ -206,7 +212,7 @@ function attachSidebarEvents() {
   document.getElementById('plcrm-open-kanban').addEventListener('click', () => chrome.runtime.sendMessage({ type: 'OPEN_KANBAN' }));
 }
 
-// ─── Data Management ──────────────────────────────────────────────────────────
+// ─── Data Persistence ────────────────────────────────────────────────────────
 
 function loadAndPopulateSidebar(threadId) {
   chrome.storage.local.get(['threads'], (result) => {
@@ -256,9 +262,6 @@ function saveCurrentThread() {
     chrome.storage.local.set({ threads }, () => {
       document.getElementById('plcrm-save-btn').textContent = 'Saved ✓';
       updateInboxUI();
-      if (threads[currentThreadId].followUpDate) {
-        scheduleAlarm(currentThreadId, threads[currentThreadId].name, threads[currentThreadId].followUpDate);
-      }
     });
   });
 }
@@ -304,10 +307,6 @@ function updateFollowupHint(dateStr) {
   if (!dateStr) { hint.textContent = ''; return; }
   const diff = Math.round((new Date(dateStr + 'T00:00:00') - new Date().setHours(0,0,0,0)) / 86400000);
   hint.textContent = diff < 0 ? 'Overdue' : diff === 0 ? 'Today' : `In ${diff} days`;
-}
-
-function scheduleAlarm(id, name, date) {
-  chrome.runtime.sendMessage({ type: 'SCHEDULE_ALARM', alarmName: `followup_${id}`, alarmTime: new Date(date + 'T09:00:00').getTime(), contactName: name, threadId: id });
 }
 
 function checkCurrentThread() {
