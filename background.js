@@ -2,6 +2,9 @@
 // Handles follow-up alarms and browser notifications
 
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+  if (msg.type === 'OPEN_KANBAN') {
+    chrome.tabs.create({ url: 'kanban.html' });
+  }
   if (msg.type === 'SCHEDULE_ALARM') {
     chrome.alarms.create(msg.alarmName, { when: msg.alarmTime });
 
